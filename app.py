@@ -1,149 +1,161 @@
 from flask import *
-import cv2
-import os
+import cv2, os, numpy as np
 
 app = Flask(__name__)
 
-base = os.path.join(app.root_path, "static", "captures")
-os.makedirs(base, exist_ok=True)
-save, ret, frame = None, None, None
+captures_base = os.path.join(app.root_path, "static", "captures")
+os.makedirs(captures_base, exist_ok=True)
+
+photo_save, ret, frame = None, None, None
 selected_photo = []
+frame_base = os.path.join(app.root_path, "static", "frames")
+frame_path = frame_base
+selected_frame = []
+shot_index = 0
+
+def load_overlays():
+    exts = ("jpg", "jpeg", "png")
+    overlays = []
+    for idx in selected_frame:
+        img = None
+        for ext in exts:
+            p1 = os.path.join(frame_path, f"frame{idx}.{ext}")
+            p2 = os.path.join(frame_path, f"{idx}.{ext}")
+            if os.path.exists(p1):
+                img = cv2.imread(p1)
+                if img is not None:
+                    break
+            if os.path.exists(p2):
+                img = cv2.imread(p2)
+                if img is not None:
+                    break
+        if img is not None:
+            overlays.append(img)
+    return overlays
 
 def generate_frames():
-    global ret, frame
+    global ret, frame, shot_index
     cap = cv2.VideoCapture(1)
-    print('카메라 연결 완료')
-
+    ov_list = load_overlays()
     while True:
-        ret, frame = cap.read()
+        ret, cam = cap.read()
         if not ret:
             break
-        else:
-            # 좌우 반전
-            frame = cv2.flip(frame, 1)
-            # 프레임을 JPEG 형식으로 인코딩
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame_ = buffer.tobytes()
+        cam = cv2.flip(cam, 1)
 
-            # 멀티파트 메시지 형식으로 프레임 생성
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
+        if len(ov_list) > 0 and shot_index < len(ov_list):
+            h, w = cam.shape[:2]
+            ov = ov_list[shot_index]
+            ov = cv2.resize(ov, (w, h))
+            a = (cv2.cvtColor(ov, cv2.COLOR_BGR2GRAY) > 5).astype(np.float32)
+            a = cv2.GaussianBlur(a, (0, 0), 2.0)
+            a3 = cv2.merge([a, a, a])
+            cam = (ov * a3 + cam * (1 - a3)).astype(np.uint8)
 
-app = Flask(__name__)
-
-# app.config['DEBUG'] = True
-# app.config['SECRET_KEY'] = 'your_secret_key'
-
-# @app.route('/about')
-# def about():
-#     return 'About Page'
-
-# @app.route('/user/<username>')
-# def show_user_profile(username):
-#     return f'User {username}'
-
-# @app.route('/post/<int:post_id>')
-# def show_post(post_id):
-#     return f'Post {post_id}'
-
-# @app.route('/path/<path:subpath>')
-# def show_subpath(subpath):
-#     # 디렉토리 트래버설 공격을 방지하기 위한 subpath를 검증
-#     if '..' in subpath or subpath.startswith('/'):
-#         abort(400, description="잘못된 경로")  # 잘못된 경로일 경우 400 에러를 반환합니다.
-#     return render_template(f'{subpath}.html')
-
-# @app.route('/login', methods=['GET', 'POST'])
-# def login():
-#     if request.method == 'POST':
-#         return 'Do the login'
-#     else:
-#         return 'Show the login form'
-
-# @app.route('/json')
-# def json_example():
-#     return jsonify(message="Hello, World!", status=200)
+        frame = cam
+        ok, buffer = cv2.imencode('.jpg', frame)
+        if not ok:
+            continue
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 @app.route('/')
 def home():
+    global photo_save, selected_photo, selected_frame, shot_index
+    selected_photo = []
+    selected_frame = []
+    shot_index = 0
+    i = 1
+    while os.path.exists(os.path.join(captures_base, str(i))):
+        i += 1
+    photo_save = os.path.join(captures_base, str(i))
     return render_template('index.html')
 
-@app.route("/photo")
-def photo():
-    global save, selected_photo
-    selected_photo = []
-    i = 1
-    while os.path.exists(os.path.join(base, str(i))):
-        i += 1
-    save = os.path.join(base, str(i))
+@app.route('/select_frame_page')
+def select_frame_page():
+    files = sorted([f for f in os.listdir(frame_path) if os.path.isfile(os.path.join(frame_path, f))])
+    folder_rel = os.path.relpath(frame_path, app.root_path).replace(os.sep, '/')
+    return render_template('select_frame.html', folder_rel=folder_rel, files=files)
+
+@app.route('/select_frame/<int:item_id>', methods=['POST'])
+def select_frame(item_id):
+    files = sorted([f for f in os.listdir(frame_path) if os.path.isfile(os.path.join(frame_path, f))])
+    if not 1 <= item_id <= len(files):
+        return jsonify(status="error"), 400
+    if item_id not in selected_frame:
+        selected_frame.append(item_id)
+        print(f'{frame_path}/frame{item_id} 선택, 현재: {selected_frame}')
+    return jsonify(status="ok", id=item_id)
+
+@app.route('/delete_frame/<int:item_id>', methods=['POST'])
+def delete_frame(item_id):
+    files = sorted([f for f in os.listdir(frame_path) if os.path.isfile(os.path.join(frame_path, f))])
+    if not 1 <= item_id <= len(files):
+        return jsonify(status="error"), 400
+    if item_id in selected_frame:
+        selected_frame.remove(item_id)
+        print(f'{frame_path}/frame{item_id} 취소, 현재: {selected_frame}')
+    return jsonify(status="ok", id=item_id)
+
+@app.route("/photo_page")
+def photo_page():
     return render_template("photo.html")
 
 @app.route('/video')
 def video():
-    # 비디오 스트리밍을 위한 Response 객체 생성
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/capture', methods=['GET'])
 def capture():
-    global save, ret, frame
-    os.makedirs(save, exist_ok=True)
+    global photo_save, ret, frame, shot_index
+    os.makedirs(photo_save, exist_ok=True)
     if not ret:
         return "err", 500
 
-    i = len([f for f in os.listdir(save) if f.startswith('cap')]) + 1
+    i = len([f for f in os.listdir(photo_save) if f.startswith('capture')]) + 1
     filename = f"capture{i}.jpg"
-    cv2.imwrite(os.path.join(save, filename), frame)
-    print(f'{save}/{filename} 이 촬영됨')
-    return ("ok")
+    cv2.imwrite(os.path.join(photo_save, filename), frame)
+    print(f'{photo_save}/{filename} 이 촬영됨')
 
-@app.route('/select')
-def select():
-    global save
-    files = sorted(
-        [f for f in os.listdir(save) if os.path.isfile(os.path.join(save, f))]
-    )
-    folder_rel = os.path.relpath(save, app.root_path).replace(os.sep, '/')
-    return render_template('select.html', folder_rel=folder_rel, files=files) # 예시 뷰 코드
+    shot_index += 1
 
-@app.route('/select/<int:item_id>', methods=['POST'])
+    return "ok"
+
+@app.route('/select_photo_page')
+def select_photo_page():
+    files = sorted([f for f in os.listdir(photo_save) if os.path.isfile(os.path.join(photo_save, f))])
+    folder_rel = os.path.relpath(photo_save, app.root_path).replace(os.sep, '/')
+    return render_template('select_photo.html', folder_rel=folder_rel, files=files)
+
+@app.route('/select_photo/<int:item_id>', methods=['POST'])
 def select_photo(item_id):
-    global save, selected_photo
-    files = sorted([f for f in os.listdir(save) if os.path.isfile(os.path.join(save, f))])
+    global selected_photo
+    files = sorted([f for f in os.listdir(photo_save) if os.path.isfile(os.path.join(photo_save, f))])
     if not 1 <= item_id <= len(files):
         return jsonify(status="error"), 400
-
-    if save not in selected_photo:
-        if item_id not in selected_photo:
-            selected_photo.append(item_id)
-            print(f'{save}/capture{item_id}.jpg 선택')
-            print(f'현재 선택된 사진: {selected_photo}')
+    if item_id not in selected_photo:
+        selected_photo.append(item_id)
+        print(f'{photo_save}/capture{item_id}.jpg 선택, 현재: {selected_photo}')
     return jsonify(status="ok", id=item_id)
 
-@app.route('/delete/<int:item_id>', methods=['POST'])
+@app.route('/delete_photo/<int:item_id>', methods=['POST'])
 def delete_photo(item_id):
-    global save, selected_photo
-    files = sorted([f for f in os.listdir(save) if os.path.isfile(os.path.join(save, f))])
+    global selected_photo
+    files = sorted([f for f in os.listdir(photo_save) if os.path.isfile(os.path.join(photo_save, f))])
     if not 1 <= item_id <= len(files):
         return jsonify(status="error"), 400
-    
-    if save not in selected_photo:
-        if item_id in selected_photo:
-            selected_photo.remove(item_id)
-            print(f'{save}/capture{item_id}.jpg 선택 취소됨')
-            print(f'현재 선택된 사진: {selected_photo}')
+    if item_id in selected_photo:
+        selected_photo.remove(item_id)
+        print(f'{photo_save}/capture{item_id}.jpg 취소, 현재: {selected_photo}')
     return jsonify(status="ok", id=item_id)
 
-@app.route('/edit')
+@app.route('/edit_page')
 def edit():
-    global save, selected_photo
     selected_photo_filenames = [f"capture{i}.jpg" for i in selected_photo]
-    return render_template('edit.html', selected_photo_filenames=selected_photo_filenames)
-    
-@app.route('/view_captures/<path:filename>')
-def view_captures(filename):
-    return send_from_directory(save, filename)
+    folder_rel = os.path.relpath(photo_save, app.root_path).replace(os.sep, '/')
+    return render_template('edit.html', folder_rel=folder_rel, selected_photo_filenames=selected_photo_filenames)
 
-@app.route('/result')
+@app.route('/result_page')
 def result():
     return render_template('result.html')
 

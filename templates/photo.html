@@ -87,7 +87,7 @@
     document.body.getBoundingClientRect(); // 리플로우
     document.body.classList.add('fade-out');
 
-    const go = () => (window.location.href = '/select');
+    const go = () => (window.location.href = '/select_photo_page');
     const onEnd = (ev) => {
       if (ev.target === document.body && ev.propertyName === 'opacity') {
         document.body.removeEventListener('transitionend', onEnd);

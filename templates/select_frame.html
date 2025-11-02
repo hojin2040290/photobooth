@@ -1,0 +1,146 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='function.js') }}"></script>
+
+<!doctype html>
+<html lang="ko">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PHOTOISM</title>
+</head>
+
+<body style="opacity:0;">
+    <div class="kiosk">
+        <section class="hero">
+            <div id="grid" class="grid">
+                {% for f in files %}
+                <div class="item" data-id="{{ loop.index }}">
+                    <img src="/{{ folder_rel }}/{{ f }}" alt="frame {{ loop.index }}">
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="logo">
+                <button class="select" id="selectBtn" aria-label="선택 완료">
+                    <span class="label">선택 완료</span>
+                    <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </button>
+                <div class="hint">프레임 선택은 필수가 아닙니다.</div>
+            </div>
+        </section>
+    </div>
+
+    <style>
+        html,
+        body,
+        .kiosk {
+            height: 100%;
+        }
+
+        body {
+            overflow: auto;
+        }
+
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            padding: 12px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .item img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            display: block;
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .item.selected {
+            border: 3px solid #10B981;
+            border-radius: 10px;
+        }
+
+        .select {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 0;
+            background: #111827;
+            color: #fff;
+            cursor: pointer;
+            margin-top: 24px;
+        }
+
+        .label {
+            font-weight: 600;
+        }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const DURATION = 350;
+            const MAX = 8;
+
+            document.body.style.transition = `opacity ${DURATION}ms ease`;
+            requestAnimationFrame(() => { document.body.style.opacity = '1'; });
+
+            const grid = document.getElementById('grid');
+            const selectBtn = document.getElementById('selectBtn');
+            const selected = new Set();
+
+            if (grid) {
+                grid.querySelectorAll('.item').forEach(el => {
+                    const id = parseInt(el.dataset.id);
+                    el.addEventListener('click', () => toggleSelect(el, id));
+                });
+            }
+
+            function toggleSelect(el, id) {
+                const isSelected = selected.has(id);
+                if (!isSelected && selected.size >= MAX) {
+                    alert(`프레임은 최대 ${MAX}장까지 선택할 수 있습니다.`);
+                    return;
+                }
+                const url = isSelected ? `/delete_frame/${id}` : `/select_frame/${id}`;
+                fetch(url, { method: 'POST' }).then(r => {
+                    if (!r.ok) return;
+                    if (isSelected) {
+                        selected.delete(id);
+                        el.classList.remove('selected');
+                    } else {
+                        selected.add(id);
+                        el.classList.add('selected');
+                    }
+                });
+            }
+
+            if (selectBtn) {
+                selectBtn.addEventListener('click', e => {
+                    e.preventDefault();
+                    document.body.style.opacity = '0';
+                    const go = () => window.location.href = '/photo_page';
+                    const onEnd = ev => {
+                        if (ev.target === document.body && ev.propertyName === 'opacity') {
+                            document.body.removeEventListener('transitionend', onEnd);
+                            go();
+                        }
+                    };
+                    document.body.addEventListener('transitionend', onEnd);
+                    setTimeout(go, DURATION + 100);
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

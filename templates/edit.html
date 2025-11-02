@@ -11,165 +11,177 @@
 </head>
 
 <body>
-    <!-- 선택된 사진 미리보기 -->
     <section class="selected-photo" aria-label="선택된 사진 미리보기">
-        <div id="grid" class="preview-area">
-            {% for p in selected_photo_filenames %}
-            <div class="item">
-                <img src="{{ url_for('view_captures', filename=p) }}" alt="선택된 사진 {{ loop.index }}">
+        <div id="gridOriginal" class="preview-area">
+            {% for f in selected_photo_filenames %}
+            <div class="item" data-id="{{ loop.index }}">
+                <img src="/{{ folder_rel }}/{{ f }}" alt="selected_photo {{ loop.index }}">
             </div>
             {% endfor %}
         </div>
         <p>원본</p>
     </section>
 
-    <!-- 편집된 사진 미리보기 -->
     <section class="edited-photo" aria-label="편집된 사진 미리보기">
-        <div id="grid" class="preview-area">
-            <!-- {% for p in selected_photo_filenames %} -->
+        <div id="gridEdited" class="preview-area">
             <div class="item">
                 <img src="" alt="편집된 사진">
             </div>
-            <!-- {% endfor %} -->
         </div>
-        <p>{} 스타일 적용</p>
+        <p>편집 후</p>
     </section>
 
-    <!-- 적용 버튼(필요 시 주석 해제) -->
-    <!--
-  <div class="toolbar">
-    <button class="edit" id="editBtn" aria-label="적용하기">
-      <span class="label">적용하기</span>
-      <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <span class="spinner" aria-hidden="true"></span>
-    </button>
-  </div>
-  -->
+    <section class="editbox">
+        <div class="editprompt">여기에서 원하는 스타일 작성 또는 선택</div>
+        <div class="toolbar">
+            <button class="edit" id="editBtn" aria-label="적용하기">
+                <span class="label">적용하기</span>
+                <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                <span class="spinner" aria-hidden="true"></span>
+            </button>
+
+            <button class="start" id="finishBtn" aria-label="편집완료버튼">
+                <span class="label">편집완료</span>
+                <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                <span class="spinner" aria-hidden="true"></span>
+            </button>
+        </div>
+    </section>
+
+    <style>
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            overflow: auto;
+        }
+
+        .preview-area {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            padding: 12px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .item img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            display: block;
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .selected-photo,
+        .edited-photo {
+            display: grid;
+            justify-items: center;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            padding: 12px;
+        }
+
+        .edit,
+        .start {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 0;
+            background: #111827;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .edit[disabled],
+        .start[disabled] {
+            opacity: .6;
+            cursor: not-allowed;
+        }
+
+        .label {
+            font-weight: 600;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-right-color: transparent;
+            border-radius: 50%;
+            display: none;
+            animation: spin .8s linear infinite;
+        }
+
+        .edit.processing .spinner,
+        .start.processing .spinner {
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .fade-out {
+            transition: opacity .35s ease;
+            opacity: 0;
+        }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const editBtn = document.getElementById('editBtn');
+            const finishBtn = document.getElementById('finishBtn');
+
+            if (editBtn) {
+                let busy = false;
+                editBtn.addEventListener('click', e => {
+                    if (busy) return;
+                    busy = true;
+                    e.preventDefault();
+
+                    editBtn.classList.add('processing');
+                    editBtn.setAttribute('disabled', 'true');
+                    const label = editBtn.querySelector('.label');
+                    if (label) label.textContent = '적용 중...';
+                });
+            }
+
+            if (finishBtn) {
+                finishBtn.addEventListener('click', e => {
+                    e.preventDefault();
+                    // JS로 페이드 아웃
+                    document.body.style.opacity = '0';
+                    const go = () => window.location.href = '/result_page';
+                    const onEnd = ev => {
+                        if (ev.target === document.body && ev.propertyName === 'opacity') {
+                            document.body.removeEventListener('transitionend', onEnd);
+                            go();
+                        }
+                    };
+                    document.body.addEventListener('transitionend', onEnd);
+                    setTimeout(go, DURATION + 100);
+                });
+            }
+        });
+    </script>
 </body>
 
 </html>
-<style>
-    /* 선택 사진 그리드 */
-    #grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 12px;
-        padding: 12px;
-        max-height: 70vh;
-        overflow-y: auto;
-    }
-
-    .item img {
-        width: 100%;
-        height: 180px;
-        object-fit: cover;
-        display: block;
-        border-radius: 10px;
-        border: 2px solid #e5e7eb;
-        /* slate-200 */
-    }
-
-    /* 페이지 전환용(선택) */
-    .fade-out {
-        transition: opacity .35s ease;
-        opacity: 0;
-    }
-
-    html,
-    body {
-        height: 100%;
-    }
-
-    body {
-        overflow: auto;
-    }
-
-    .toolbar {
-        display: flex;
-        justify-content: center;
-        gap: 12px;
-        padding: 12px;
-    }
-
-    .edit {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 16px;
-        border-radius: 10px;
-        border: 0;
-        background: #111827;
-        /* gray-900 */
-        color: #fff;
-        cursor: pointer;
-    }
-
-    .edit[disabled] {
-        opacity: .6;
-        cursor: not-allowed;
-    }
-
-    .label {
-        font-weight: 600;
-    }
-
-    .spinner {
-        width: 16px;
-        height: 16px;
-        border: 2px solid #fff;
-        border-right-color: transparent;
-        border-radius: 50%;
-        display: none;
-        animation: spin 0.8s linear infinite;
-    }
-
-    .edit.processing .spinner {
-        display: inline-block;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    .selected-photo, .edited-photo {
-        display: grid;
-        justify-items: center;
-    }
-</style>
-
-<script>
-    // 페이지 전환(선택 사용): 적용하기 버튼 클릭 시 결과 화면으로 이동
-    document.addEventListener('DOMContentLoaded', () => {
-        const btn = document.getElementById('editBtn');
-        if (!btn) return;
-
-        let processing = false;
-        btn.addEventListener('click', e => {
-            if (processing) return;
-            processing = true;
-            e.preventDefault();
-
-            btn.classList.add('processing');
-            btn.setAttribute('disabled', 'true');
-            const label = btn.querySelector('.label');
-            if (label) label.textContent = '적용 중...';
-
-            // 페이드아웃 후 이동
-            document.body.getBoundingClientRect(); // 리플로우
-            document.body.classList.add('fade-out');
-
-            const go = () => window.location.href = '/result';
-            const onEnd = ev => {
-                if (ev.target === document.body && ev.propertyName === 'opacity') {
-                    document.body.removeEventListener('transitionend', onEnd);
-                    go();
-                }
-            };
-            document.body.addEventListener('transitionend', onEnd);
-        });
-    });
-</script>
